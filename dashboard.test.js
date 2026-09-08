@@ -61,6 +61,13 @@ test('mismatched dates, schema and source totals fail closed',()=>{
   raw[2][0]['實際花費']=201;
   assert.throws(()=>data.parseAll(ranges(raw)),/不一致/);
 });
+test('empty unlisted-store placeholders are skipped without hiding real source errors',()=>{
+  const raw=fixtures();
+  raw[4].push({'月份':data.months[0],'品牌代碼':'SS','客群':'新客','統計基準':'依預約日期','預約店':'台北岩盤浴','來源代碼':'無來源','到店數':null,'消費數':null,'消費金額':null,'來源店名':null});
+  assert.equal(data.parseAll(ranges(raw)).consumptionRows.length,2);
+  raw[4].push({'月份':data.months[0],'品牌代碼':'SS','客群':'新客','統計基準':'依預約日期','預約店':'台北岩盤浴','來源代碼':'總計','到店數':1,'消費數':1,'消費金額':100,'來源店名':null});
+  assert.throws(()=>data.parseAll(ranges(raw)),/缺少來源店名/);
+});
 test('partial-platform budgets are not reported complete',()=>{
   const raw=fixtures();raw[2][3]['實際花費']=null;
   const r=data.parseBudgetRows(table(raw[2]));

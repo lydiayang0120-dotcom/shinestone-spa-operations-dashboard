@@ -168,6 +168,9 @@
       if (!isBrand(row)) continue;
       const m = consumptionMonth(row['月份']);
       if (m < 0) continue;
+      const isEmptyPlaceholder = row['來源代碼'] === '無來源'
+        && ['到店數','消費數','消費金額'].every(field => row[field] === null || row[field] === '');
+      if (isEmptyPlaceholder) continue;
       const cohort = row['客群'] === '新客' ? 'new' : row['客群'] === '舊客' ? 'returning' : null;
       const code = storeCode(row['預約店']), group = grouped.get(m)?.[cohort];
       if (!group || !code || row['統計基準'] !== '依預約日期') throw new Error('分店消費的客群、分店、月份或統計基準不符。');
