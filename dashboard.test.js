@@ -101,6 +101,7 @@ test('Meta budget copy consistently means the monthly execution target',()=>{
   assert.match(html,/Meta 預算＝每月執行目標/);
   assert.match(html,/<th>Meta 預算<\/th>/);
   assert.match(html,/實際花費 ÷ Meta 預算/);
+  assert.match(html,/529534211092557 的宜蘭投放固定以匯率 33 換算後歸入羅東岩盤浴/);
   assert.match(html,/<option value="tiktok">TikTok 廣告<\/option>/);
   assert.doesNotMatch(html+js,/參考預算|PM 核定/);
   const rows=data.parseAll(ranges(fixtures())).metaRows;
