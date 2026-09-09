@@ -60,13 +60,17 @@
   const sorted = grouped => [...grouped.values()].sort((a, b) => a.m - b.m);
   function parseNewRows(values) {
     const grouped = new Map();
-    for (const row of records(values, ['月份','品牌代碼','年度歸屬','年度月序','分店','資料狀態','到店數','新客目標'])) {
-      if (!selected(row) || row['資料狀態'] !== '已匯入') continue;
+    const sourceRows = records(values, ['月份','品牌代碼','年度歸屬','年度月序','分店','資料狀態','到店數','新客目標']).filter(selected);
+    const importedMonths = new Set(sourceRows.filter(row => row['資料狀態'] === '已匯入').map(row => monthIndex(row, '年度月序')));
+    for (const row of sourceRows) {
+      const m = monthIndex(row, '年度月序');
+      if (!importedMonths.has(m)) continue;
       const key = storeCode(row['分店']);
       if (!key) throw new Error('新客工作表出現未設定的分店。');
-      const a = required(row['到店數']), t = number(row['新客目標']);
-      if (!Number.isInteger(a) || (t !== null && !Number.isInteger(t))) throw new Error('新客到店數與目標必須是整數。');
-      add(grouped, monthIndex(row, '年度月序'), key, {a, t, active:true});
+      const active = row['資料狀態'] === '已匯入';
+      const a = active ? required(row['到店數']) : null, t = number(row['新客目標']);
+      if ((a !== null && !Number.isInteger(a)) || (t !== null && !Number.isInteger(t))) throw new Error('新客到店數與目標必須是整數。');
+      add(grouped, m, key, {a, t, active});
     }
     const result = sorted(grouped);
     if (result.some((row, i) => row.m !== i)) throw new Error('新客月份尚未連續匯入，停止累積以避免低估。');
@@ -112,9 +116,10 @@
   const stores = (row, store) => store === 'all' ? storeCodes.map(code=>row[code]) : [row[store]];
   const metaStores = (row, store) => store === 'all' ? metaCodes.map(code=>row[code]) : [row[store]];
   function newTotal(rows,store='all') {
-    const list=rows.flatMap(row=>stores(row,store)).filter(item=>item && item.active!==false);
+    const list=rows.flatMap(row=>stores(row,store)).filter(Boolean);
+    const actuals=list.filter(item=>item.active!==false);
     if (!list.length) return {a:null,t:null,d:null,rate:null};
-    const a=sumComplete(list.map(item=>item.a)),t=sumComplete(list.map(item=>item.t));
+    const a=actuals.length?sumComplete(actuals.map(item=>item.a)):null,t=sumComplete(list.map(item=>item.t));
     return {a,t,d:t===null||a===null?null:a-t,rate:t>0?a/t:null};
   }
   function metaTotal(rows, store) {

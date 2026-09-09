@@ -254,7 +254,7 @@ test('unknown store names are rejected instead of being merged into SS',()=>{
   assert.throws(()=>data.parseConsumptionRows(table(consumption[3]),table(consumption[4])),/不符/);
 });
 
-test('nine-store totals and missing targets or budgets never become zero',()=>{
+test('missing targets keep the aggregate incomplete; confirmed zero remains zero',()=>{
   const rows=[{m:0,zl:{a:1,t:10},bd:{a:2,t:20},tc:{a:3,t:30},tp:{a:4,t:40},zx:{a:5,t:50},bc:{a:6,t:60},ty:{a:7,t:70},ld:{a:8,t:80},qp:{a:9,t:null}}];
   assert.deepEqual(data.newTotal(rows,'all'),{a:45,t:null,d:null,rate:null});
   assert.deepEqual(data.newTotal(rows,'qp'),{a:9,t:null,d:null,rate:null});
@@ -266,6 +266,19 @@ test('nine-store totals and missing targets or budgets never become zero',()=>{
   const parsed=data.parseAll(ranges(raw));
   assert.equal(data.budgetAggregate(parsed.budgetRows[0],'all').b,null);
   assert.equal(data.budgetAggregate(parsed.budgetRows[0],'all').a,null);
+});
+
+test('targets for no-source stores remain in the imported month total',()=>{
+  const raw=fixtures()[0].filter(row=>row['年度月序']===1);
+  raw.forEach(row=>row['新客目標']=row['分店']==='台北岩盤浴'?0:50);
+  for(const name of ['八德岩盤浴','青埔岩盤浴']) {
+    const row=raw.find(item=>item['分店']===name);
+    row['資料狀態']='無來源';row['到店數']=null;
+  }
+  const rows=data.parseNewRows(table(raw));
+  assert.deepEqual(rows[0].bd,{a:null,t:50,active:false});
+  assert.deepEqual(rows[0].tp,{a:0,t:0,active:true});
+  assert.deepEqual(data.newTotal(rows,'all'),{a:2,t:400,d:-398,rate:2/400});
 });
 
 test('new-customer arrivals and consumption arrivals mismatches fail closed',()=>{
