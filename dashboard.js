@@ -71,7 +71,7 @@
     try {
       next=parseAll(ordered);
     } catch(error) {
-      if(!/年度預算須具備十二個月份與四個平台/.test(error.message)) throw error;
+      if(!/年度預算須具備十二個月份/.test(error.message)) throw error;
       // A transient partial batch response must not send an authorized user back to the login wall.
       [ordered[2]]=await fetchRanges(accessToken,[rangeSpecs[2]]);
       next=parseAll(ordered);
@@ -241,18 +241,20 @@
   function updateBudget() {
     const type=$('#sms-budget-type').value,cutoff=Number($('#sms-budget-month').value);
     const selected=budgetRows.filter(r=>r.m<=cutoff);
-    const annual=sumComplete(budgetRows.map(r=>budgetAggregate(r,type).b)),actual=sumKnown(selected.map(r=>budgetAggregate(r,type).a)),remaining=annual===null||actual===null?null:annual-actual;
+    const annualValues=budgetRows.map(r=>budgetAggregate(r,type)).filter(v=>v.configured);
+    const selectedValues=selected.map(r=>budgetAggregate(r,type)).filter(v=>v.configured);
+    const annual=sumComplete(annualValues.map(v=>v.b)),actual=sumKnown(selectedValues.map(v=>v.a)),remaining=annual===null||actual===null?null:annual-actual;
     $('#sms-budget-total').innerHTML=unit(annual,'元');
     $('#sms-budget-actual').innerHTML=unit(actual,'元');
     $('#sms-budget-remaining').innerHTML=remaining===null?'待補':remaining>=0?unit(remaining,'元'):'超支 '+unit(-remaining,'元');
     $('#sms-budget-rate').textContent=annual&&actual!==null?pct(actual/annual):'—';
-    const partial=selected.some(r=>budgetAggregate(r,type).partial);
+    const partial=selectedValues.some(v=>v.partial);
     $('#sms-budget-period').textContent='2025/12－'+months[cutoff]+(partial?'｜含部分資料，未全數確認':'');
-    const periodBudget=sumComplete(selected.map(r=>budgetAggregate(r,type).b));
+    const periodBudget=sumComplete(selectedValues.map(v=>v.b));
     $('#sms-budget-callout').textContent='截至 '+months[cutoff]+' 的排定預算為 '+fmt(periodBudget)+' 元；已取得花費占期間預算 '+(periodBudget&&actual!==null?pct(actual/periodBudget):'無法計算')+'。'+(partial?'尚有部分或未補花費，執行率與剩餘預算皆非最終結果。':'');
     const max=Math.max(...budgetRows.flatMap(r=>{const v=budgetAggregate(r,type);return [v.b,r.m<=cutoff?(v.a||0):0];}),1);
     $('#sms-budget-bars').innerHTML=budgetRows.map(r=>{const v=budgetAggregate(r,type),a=r.m<=cutoff?v.a:null;return '<div class="sms-bar-row"><span>'+months[r.m].slice(5)+'</span><div><div class="sms-bar-track"><div class="sms-bar" style="width:'+(v.b/max*100)+'%;min-width:0"></div></div><div class="sms-bar-track" style="margin-top:4px"><div class="sms-bar sage" style="width:'+((a||0)/max*100)+'%;min-width:0"></div></div></div><span class="sms-bar-value">'+(r.m>cutoff?'未納入':fmt(a))+'</span></div>';}).join('');
-    $('#sms-budget-table').innerHTML=budgetRows.map(r=>{const v=budgetAggregate(r,type),a=r.m<=cutoff?v.a:null,rate=a===null||!v.b?null:a/v.b,diff=a===null||v.b===null?null:v.b-a;return '<tr data-current="'+(r.m===cutoff)+'"><td>'+months[r.m]+'</td><td>'+fmt(v.b)+'</td><td>'+(a===null?'—':fmt(a))+'</td><td>'+(rate===null?'—':pct(rate))+'</td><td class="'+(diff!==null&&diff<0?'sms-status-warn':'')+'">'+(diff===null?'—':diff>=0?'剩餘 '+fmt(diff):'超支 '+fmt(-diff))+'</td><td>'+(r.m>cutoff?'未納入':a===null?'待補':v.partial?'部分資料':'已填')+'</td></tr>';}).join('');
+    $('#sms-budget-table').innerHTML=budgetRows.map(r=>{const v=budgetAggregate(r,type),a=r.m<=cutoff?v.a:null,rate=a===null||!v.b?null:a/v.b,diff=a===null||v.b===null?null:v.b-a;return '<tr data-current="'+(r.m===cutoff)+'"><td>'+months[r.m]+'</td><td>'+(v.configured?fmt(v.b):'—')+'</td><td>'+(a===null?'—':fmt(a))+'</td><td>'+(rate===null?'—':pct(rate))+'</td><td class="'+(diff!==null&&diff<0?'sms-status-warn':'')+'">'+(diff===null?'—':diff>=0?'剩餘 '+fmt(diff):'超支 '+fmt(-diff))+'</td><td>'+(!v.configured?'未規劃':r.m>cutoff?'未納入':a===null?'待補':v.partial?'部分資料':'已填')+'</td></tr>';}).join('');
   }
   root.querySelectorAll('.sms-tab[data-view]').forEach(button=>button.addEventListener('click',()=>{
     root.querySelectorAll('.sms-tab[data-view]').forEach(b=>b.setAttribute('aria-selected',String(b===button)));

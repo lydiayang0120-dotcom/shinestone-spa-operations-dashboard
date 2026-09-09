@@ -14,7 +14,7 @@
 ## 結構與更新
 
 - `dashboard.template.html`：固定湖水綠四頁版型。
-- `dashboard-data.js`：十二個月份、九店、新舊客、Meta 與四平台年度預算驗證。
+- `dashboard-data.js`：十二個月份、九店、新舊客、Meta 與多平台年度預算驗證。
 - `dashboard.js`：Google 登入、即時讀取、篩選及每 5 分鐘更新。
 - `config.js`：私人 Sheet ID 與公開 OAuth client ID。
 - `node build_v02.js`：檢查語法並產生 `index.html`。
@@ -30,7 +30,7 @@
 - 活動名稱無法明確歸店時保留「品牌整體」，不硬分攤。
 - 未知預算與 LAP 實際花費保留空白，不當成 0。
 - Meta 與年度預算的同月實際花費不一致時停止顯示。
-- 年度預算固定保留 Meta、Google 關鍵字、Google 多媒體與 LAP 品牌私域四平台列；未知數值維持空白。
+- 年度預算支援 Meta、Google 關鍵字、Google 多媒體、LAP 品牌私域與 TikTok；TikTok 等階段性投放平台可只建立實際規劃月份，未建立的月份顯示「未規劃」。
 - 本機 `file://` 不支援 Google 登入；正式版須使用已授權的 HTTPS 來源。
 
 私人驗收、月報、日誌、帳號清單與數值匯出保存在本機或正式工作中樞，不加入 Git；`data/`、`output/`、`node_modules/` 已由 `.gitignore` 排除。

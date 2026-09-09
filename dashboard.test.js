@@ -75,6 +75,17 @@ test('partial-platform budgets are not reported complete',()=>{
   assert.equal(data.budgetAggregate(r[0],'all').partial,true);
   assert.equal(data.budgetAggregate(r[0],'lap').a,null);
 });
+test('TikTok is optional by month, included in totals and selectable',()=>{
+  const budgetRows=fixtures()[2].filter(row=>!['G關鍵字','G多媒體'].includes(row['廣告平台']));
+  for(const m of [1,2,3]) budgetRows.push({'月份':data.months[m],'品牌代碼':'SS','年度歸屬':2026,'年度月序':m+1,'廣告平台':'Tiktok','預算金額':30000,'實際花費':m<3?30000:null,'實際花費來源':'測試資料','填寫狀態':m<3?'已填':'待補'});
+  const parsed=data.parseBudgetRows(table(budgetRows));
+  assert.deepEqual(data.budgetPlatformKeys,['meta','g_keyword','g_display','lap','tiktok']);
+  assert.equal(data.budgetAggregate(parsed[0],'tiktok').configured,false);
+  assert.deepEqual(data.budgetAggregate(parsed[1],'tiktok'),{b:30000,a:30000,partial:false,configured:true});
+  assert.equal(data.budgetAggregate(parsed[1],'all').b,30600);
+  const unknown=structuredClone(budgetRows);unknown.push({...unknown[0],'年度月序':2,'月份':data.months[1],'廣告平台':'未設定平台'});
+  assert.throws(()=>data.parseBudgetRows(table(unknown)),/未設定平台/);
+});
 test('anonymous HTML is data-free and JS has no persistent credential store',()=>{
   const html=fs.readFileSync(__dirname+'/index.html','utf8');
   assert.match(html,/<div id="sms-dashboard-web"[^>]+ hidden>/);
@@ -90,6 +101,7 @@ test('Meta budget copy consistently means the monthly execution target',()=>{
   assert.match(html,/Meta 預算＝每月執行目標/);
   assert.match(html,/<th>Meta 預算<\/th>/);
   assert.match(html,/實際花費 ÷ Meta 預算/);
+  assert.match(html,/<option value="tiktok">TikTok 廣告<\/option>/);
   assert.doesNotMatch(html+js,/參考預算|PM 核定/);
   const rows=data.parseAll(ranges(fixtures())).metaRows;
   assert.equal(data.metaTotal(rows,'all').rate,1400/1680);
