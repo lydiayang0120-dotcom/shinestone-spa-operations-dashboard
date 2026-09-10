@@ -95,10 +95,10 @@ test('anonymous HTML is data-free and JS has no persistent credential store',()=
   assert.match(js,/cache:'no-store'/);
   new vm.Script(js);
 });
-test('Meta budget copy consistently means the monthly execution target',()=>{
+test('Meta budget copy distinguishes annual full-brand and store allocation sources',()=>{
   const html=fs.readFileSync(__dirname+'/index.html','utf8');
   const js=fs.readFileSync(__dirname+'/dashboard.js','utf8');
-  assert.match(html,/Meta 預算＝每月執行目標/);
+  assert.match(html,/全品牌：年度預算｜單店：G 欄分配/);
   assert.match(html,/<th>Meta 預算<\/th>/);
   assert.match(html,/實際花費 ÷ Meta 預算/);
   assert.match(html,/529534211092557 的宜蘭投放固定以匯率 33 換算後歸入羅東岩盤浴/);
@@ -141,7 +141,7 @@ test('UI login, refresh, four panels, consumption filters and logout',async()=>{
   assert.equal(root.hidden,false);assert.equal(reads,2);
   assert.match(elements.get('#sms-new-actual').html,/12</);
   assert.match(elements.get('#sms-meta-cpa').html,/20</);
-  assert.match(elements.get('#sms-meta-completeness').textContent,/每月執行目標/);
+  assert.match(elements.get('#sms-meta-completeness').textContent,/全品牌 Meta 預算採「年度預算」頁籤的每月核定額/);
   assert.match(elements.get('#sms-budget-total').html,/14400</);
   tabs[1].events.click();
   assert.equal(panels[1].hidden,false);assert.equal(panels[0].hidden,true);
@@ -168,7 +168,10 @@ test('UI login, refresh, four panels, consumption filters and logout',async()=>{
   assert.match(elements.get('#sms-data-updated').textContent,/更新完成.*\d+:\d+:\d+/);
   assert.match(elements.get('#sms-meta-table').html,/<td>900<\/td>/);
   assert.equal(elements.get('#sms-meta-rate').textContent,'300.0%');
-  assert.match(elements.get('#sms-meta-completeness').textContent,/年度規劃的每月執行目標/);
+  assert.match(elements.get('#sms-meta-completeness').textContent,/全品牌 Meta 預算採「年度預算」頁籤的每月核定額/);
+  elements.get('#sms-meta-store').value='zl';
+  elements.get('#sms-meta-store').events.change();
+  assert.match(elements.get('#sms-meta-completeness').textContent,/單店 Meta 預算採「Meta月度KPI」G 欄的 PM 分配額/);
   assert.match(elements.get('#sms-budget-total').html,/14400</);
   assert.equal(elements.get('#sms-new-mode').value,'monthly');
   assert.equal(elements.get('#sms-new-store').value,'zl');
