@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>澤之湯｜費用登錄副本驗收</title>
+  <style>
+    :root { color-scheme: light; background:#e8f6f4; }
+    html,body { margin:0; min-height:100%; }
+    * { box-sizing:border-box; }
+    body { padding:16px; background:#e8f6f4; font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif; }
+    [hidden] { display:none !important; }
+    .sms-auth-wall { min-height:calc(100vh - 32px); display:grid; place-items:center; background:#f1fbfa; border-radius:18px; }
+    .sms-auth-card { width:min(520px,calc(100% - 32px)); padding:34px; border:1px solid #b9d9d5; border-radius:18px; background:#fbffff; color:#244b49; box-shadow:0 18px 50px rgba(36,75,73,.10); }
+    .sms-auth-kicker { margin:0 0 8px; color:#287d77; letter-spacing:.15em; }
+    .sms-auth-card h1 { margin:0 0 14px; font-weight:500; }
+    .sms-auth-card p { color:#52716f; line-height:1.7; }
+    .sms-auth-card button { width:100%; min-height:46px; margin-top:12px; border:0; border-radius:12px; background:#4fa9a0; color:#fff; font:inherit; cursor:pointer; }
+    .sms-auth-card button:disabled { opacity:.48; cursor:not-allowed; }
+    .sms-auth-status[data-error="true"] { color:#ac5761; }
+    @media(max-width:460px){ body{padding:0}.sms-auth-wall{min-height:100vh;border-radius:0}.sms-auth-card{padding:24px} }
+  </style>
+  <script>window.SMS_CONFIG = Object.freeze({
+  // 澤之湯專用資料來源；不可改接其他品牌工作表
+  sheetId: '1Rc3GnSym2pa0IXEM0hXHJ1kb8vOp_a15_oY4TcEgxgY',
+  googleClientId: '911369423054-e4dvdfutipg4hkrnqrtoebnnf57kpufn.apps.googleusercontent.com'
+});
+
+
+</script>
+  <script>(function (host) {
+  'use strict';
+  const months = ['2025/12','2026/01','2026/02','2026/03','2026/04','2026/05','2026/06','2026/07','2026/08','2026/09','2026/10','2026/11'];
+  const number = value => {
+    if (value === null || value === undefined || value === '') return null;
+    const result = typeof value === 'number' ? value : Number(String(value).trim());
+    if (!Number.isFinite(result) || result < 0) throw new Error('來源含無效或負數，請檢查數值欄位。');
+    return result;
+  };
+  const required = value => {
+    const result = number(value);
+    if (result === null) throw new Error('已匯入資料缺少必要數字，未將空白當成零。');
+    return result;
+  };
+  function records(values, fields) {
+    const [header = [], ...rows] = values || [];
+    if (fields.some(field => !header.includes(field))) throw new Error('來源工作表欄位不符，停止顯示以避免誤算。');
+    return rows.filter(row => row.some(value => value !== null && value !== '')).map(row => Object.fromEntries(header.map((key, i) => [key, row[i] ?? null])));
+  }
+  const isBrand = row => row['品牌代碼'] === 'SS';
+  const selected = row => isBrand(row) && Number(row['年度歸屬']) === 2026;
+  const storeCodes = ['zl','bd','tc','tp','zx','bc','ty','ld','qp'];
+  const storeAliases = new Map([
+    ['中壢岩盤浴','zl'],
+    ['八德岩盤浴','bd'],
+    ['台中岩盤浴','tc'],
+    ['台北岩盤浴','tp'],
+    ['忠孝岩盤浴','zx'],
+    ['板橋岩盤浴','bc'],
+    ['桃園岩盤浴','ty'],
+    ['羅東岩盤浴','ld'],
+    ['青埔岩盤浴','qp']
+  ]);
+  const storeCode = value => storeAliases.get(String(value || '').trim()) || null;
+  const metaCodes = [...storeCodes,'brand'];
+  const budgetPlatformKeys = ['meta','g_keyword','g_display','lap','tiktok'];
+  const requiredBudgetPlatformKeys = ['meta','lap'];
+  const metaCode = value => storeCode(value) || (value === '品牌整體' ? 'brand' : null);
+  const sumComplete = values => values.length && values.every(Number.isFinite) ? values.reduce((a,b)=>a+b,0) : null;
+  function monthIndex(row, field) {
+    const index = required(row[field]) - 1;
+    if (!Number.isInteger(index) || index < 0 || index >= months.length) throw new Error('年度月序不正確。');
+    const value = row['月份'];
+    let label;
+    if (typeof value === 'number') {
+      const date = new Date(Date.UTC(1899, 11, 30) + value * 86400000);
+      label = `${date.getUTCFullYear()}/${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    } else {
+      const match = String(value).match(/^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?$/);
+      label = match && `${match[1]}/${match[2].padStart(2, '0')}`;
+    }
+    if (label !== months[index]) throw new Error('月份與年度月序不一致。');
+    return index;
+  }
+  function add(grouped, m, key, value) {
+    const item = grouped.get(m) || {m};
+    if (item[key]) throw new Error('同月份／分店或平台有重複資料，停止加總。');
+    item[key] = value;
+    grouped.set(m, item);
+  }
+  const sorted = grouped => [...grouped.values()].sort((a, b) => a.m - b.m);
+  function parseNewRows(values) {
+    const grouped = new Map();
+    const sourceRows = records(values, ['月份','品牌代碼','年度歸屬','年度月序','分店','資料狀態','到店數','新客目標']).filter(selected);
+    const importedMonths = new Set(sourceRows.filter(row => row['資料狀態'] === '已匯入').map(row => monthIndex(row, '年度月序')));
+    for (const row of sourceRows) {
+      const m = monthIndex(row, '年度月序');
+      if (!importedMonths.has(m)) continue;
+      const key = storeCode(row['分店']);
+      if (!key) throw new Error('新客工作表出現未設定的分店。');
+      const active = row['資料狀態'] === '已匯入';
+      const a = active ? required(row['到店數']) : null, t = number(row['新客目標']);
+      if ((a !== null && !Number.isInteger(a)) || (t !== null && !Number.isInteger(t))) throw new Error('新客到店數與目標必須是整數。');
+      add(grouped, m, key, {a, t, active});
+    }
+    const result = sorted(grouped);
+    if (result.some((row, i) => row.m !== i)) throw new Error('新客月份尚未連續匯入，停止累積以避免低估。');
+    for (const row of result) for (const code of storeCodes) if (!row[code]) row[code] = {a:null,t:null,active:false};
+    return result;
+  }
+  const missingMeta = () => ({s:null,ms:null,q:null,b:null,partial:true});
+  function parseMetaRows(values) {
+    const grouped = new Map();
+    for (const row of records(values, ['月份','品牌代碼','年度歸屬','月序','分店','實際花費','訊息花費','Meta詢問數','Meta預算','資料完整性','查詢備註'])) {
+      if (!selected(row)) continue;
+      const key = metaCode(row['分店']);
+      if (!key) throw new Error('Meta 工作表出現未設定的分店。');
+      // Existing pending rows contain placeholder zeroes; keep those unknown.
+      const pending = String(row['查詢備註'] || '').includes('該分店資料待補') || /待補|待匯入/.test(row['資料完整性'] || '');
+      const value = pending ? {...missingMeta(), b:number(row['Meta預算'])} : {
+        s:number(row['實際花費']), ms:number(row['訊息花費']), q:number(row['Meta詢問數']), b:number(row['Meta預算']),
+        partial:row['資料完整性'] !== '已確認'
+      };
+      if (value.ms !== null && value.s !== null && value.ms > value.s) throw new Error('訊息花費大於全部花費，請核對來源。');
+      add(grouped, monthIndex(row, '月序'), key, value);
+    }
+    return sorted(grouped).map(row => ({...row, ...Object.fromEntries(metaCodes.map(code=>[code,row[code]||missingMeta()]))}));
+  }
+  function parseBudgetRows(values) {
+    const grouped = new Map();
+    for (const row of records(values, ['月份','品牌代碼','年度歸屬','年度月序','廣告平台','預算金額','實際花費','實際花費來源','填寫狀態'])) {
+      if (!selected(row)) continue;
+      const platform = String(row['廣告平台'] || '').trim();
+      const platformLower = platform.toLowerCase();
+      const key = platformLower === 'meta' ? 'meta' :
+        platform === 'G關鍵字' ? 'g_keyword' :
+        platform === 'G多媒體' ? 'g_display' :
+        platformLower.startsWith('lap') ? 'lap' :
+        platformLower === 'tiktok' ? 'tiktok' : null;
+      if (!key) throw new Error(`年度預算出現未設定的平台：${platform || '空白'}。`);
+      const a = /待補|待匯入/.test(row['填寫狀態'] || '') ? null : number(row['實際花費']);
+      add(grouped, monthIndex(row, '年度月序'), key, {b:number(row['預算金額']), a, partial:a === null || /部分|待補/.test(row['實際花費來源'] || '')});
+    }
+    const result = sorted(grouped);
+    if (result.length !== 12 || result.some(row => requiredBudgetPlatformKeys.some(key => !row[key]))) throw new Error('年度預算須具備十二個月份、Meta 與 LAP 品牌私域。');
+    return result;
+  }
+  const sumKnown = values => values.every(value => value === null) ? null : values.reduce((total, value) => total + (value ?? 0), 0);
+  const stores = (row, store) => store === 'all' ? storeCodes.map(code=>row[code]) : [row[store]];
+  const metaStores = (row, store) => store === 'all' ? metaCodes.map(code=>row[code]) : [row[store]];
+  function newTotal(rows,store='all') {
+    const list=rows.flatMap(row=>stores(row,store)).filter(Boolean);
+    const actuals=list.filter(item=>item.active!==false);
+    if (!list.length) return {a:null,t:null,d:null,rate:null};
+    const a=actuals.length?sumComplete(actuals.map(item=>item.a)):null,t=sumComplete(list.map(item=>item.t));
+    return {a,t,d:t===null||a===null?null:a-t,rate:t>0?a/t:null};
+  }
+  function metaTotal(rows, store) {
+    const list = rows.flatMap(row => metaStores(row, store));
+    const pairs = list.filter(item => item.s !== null && item.b !== null);
+    const messages = list.filter(item => item.ms !== null && item.q !== null);
+    const result = Object.fromEntries(['s','ms','q','b'].map(key => [key, sumKnown(list.map(item => item[key]))]));
+    result.partial = list.some(item => item.partial || item.s === null || item.ms === null || item.q === null);
+    result.status = result.s === null ? '待補' : result.partial ? '部分資料' : '已確認';
+    const q = sumKnown(messages.map(item => item.q));
+    result.cpa = q > 0 ? sumKnown(messages.map(item => item.ms)) / q : null;
+    const budget = sumKnown(pairs.map(item => item.b));
+    result.rate = budget > 0 ? sumKnown(pairs.map(item => item.s)) / budget : null;
+    return result;
+  }
+  function budgetAggregate(row, type) {
+    const list = (type === 'all' ? budgetPlatformKeys.map(key => row[key]) : [row[type]]).filter(Boolean);
+    if (!list.length) return {b:null,a:null,partial:false,configured:false};
+    return {b:sumComplete(list.map(item => item.b)), a:sumKnown(list.map(item => item.a)), partial:list.some(item => item.partial || item.a === null || item.b === null), configured:true};
+  }
+  function consumptionMonth(value) {
+    let label;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      const date = new Date(Date.UTC(1899, 11, 30) + value * 86400000);
+      label = `${date.getUTCFullYear()}/${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    } else {
+      const match = String(value).match(/^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?$/);
+      if (!match || Number(match[2]) < 1 || Number(match[2]) > 12) throw new Error('消費資料月份格式不正確。');
+      label = `${match[1]}/${match[2].padStart(2, '0')}`;
+    }
+    return months.indexOf(label);
+  }
+  const consumptionFields = ['amount','count','arrivals'];
+  const emptyConsumption = present => ({amount:0,count:0,arrivals:0,present});
+  function consumptionValues(row) {
+    const value = {amount:required(row['消費金額']),count:required(row['消費數']),arrivals:required(row['到店數'])};
+    if (!Number.isInteger(value.count) || !Number.isInteger(value.arrivals) || value.count > value.arrivals || (value.count === 0 && value.amount > 0)) throw new Error('消費數、到店數或金額不一致。');
+    return {...value,present:true};
+  }
+  function parseConsumptionRows(overview, detail) {
+    if ((overview || []).length >= 40 || (detail || []).length >= 1000) throw new Error('消費資料已達讀取上限，請先擴充範圍。');
+    const grouped = new Map(), seen = new Set();
+    for (const row of records(overview, ['月份','品牌代碼','客群','到店數','消費數','消費金額'])) {
+      if (!isBrand(row)) continue;
+      const m = consumptionMonth(row['月份']);
+      if (m < 0) continue;
+      const cohort = row['客群'] === '新客' ? 'new' : row['客群'] === '舊客' ? 'returning' : null;
+      if (!cohort) throw new Error('月報出現未設定的客群。');
+      add(grouped, m, cohort, {total:consumptionValues(row),...Object.fromEntries(storeCodes.map(code=>[code,emptyConsumption(false)]))});
+    }
+    for (const row of records(detail, ['月份','品牌代碼','客群','統計基準','預約店','來源代碼','到店數','消費數','消費金額','來源店名'])) {
+      if (!isBrand(row)) continue;
+      const m = consumptionMonth(row['月份']);
+      if (m < 0) continue;
+      const isEmptyPlaceholder = row['來源代碼'] === '無來源'
+        && ['到店數','消費數','消費金額'].every(field => row[field] === null || row[field] === '');
+      if (isEmptyPlaceholder) continue;
+      const cohort = row['客群'] === '新客' ? 'new' : row['客群'] === '舊客' ? 'returning' : null;
+      const code = storeCode(row['預約店']), group = grouped.get(m)?.[cohort];
+      if (!group || !code || row['統計基準'] !== '依預約日期') throw new Error('分店消費的客群、分店、月份或統計基準不符。');
+      if (row['來源代碼'] === null) throw new Error('分店消費缺少來源代碼。');
+      const originalStore = String(row['來源店名'] || '').trim();
+      if (!originalStore) throw new Error('分店消費缺少來源店名。');
+      const key = `${m}/${cohort}/${code}/${originalStore}/${row['來源代碼']}`;
+      if (seen.has(key)) throw new Error('分店消費出現重複來源，停止加總。');
+      seen.add(key);
+      const value = consumptionValues(row);
+      if (!group[code].present) group[code] = emptyConsumption(true);
+      consumptionFields.forEach(field => group[code][field] += value[field]);
+    }
+    const result = sorted(grouped);
+    if (!result.length || result.some((row, i) => row.m !== i || !row.new || !row.returning)) throw new Error('消費月份或新舊客月報不完整。');
+    // Sparse source rows mean zero only after reconciliation with monthly totals.
+    for (const row of result) for (const cohort of ['new','returning']) {
+      const group = row[cohort];
+      for (const field of consumptionFields) {
+        if (Math.abs(storeCodes.reduce((total,code)=>total+(group[code].present?group[code][field]:0),0) - group.total[field]) > 0.01) throw new Error(`${months[row.m]} 消費明細與月報總覽不一致，停止顯示。`);
+      }
+    }
+    return result;
+  }
+  function consumptionTotal(rows, store = 'all', cohort = 'new') {
+    if (!['all',...storeCodes].includes(store) || !['all','new','returning'].includes(cohort)) throw new Error('消費篩選條件無效。');
+    if (!rows.length) return {amount:null,count:null,arrivals:null,average:null,rate:null};
+    const result = {amount:0,count:0,arrivals:0};
+    let present = false;
+    for (const row of rows) for (const key of (cohort === 'all' ? ['new','returning'] : [cohort])) {
+      const value = row[key][store === 'all' ? 'total' : store];
+      if (!value?.present) continue;
+      present = true;
+      consumptionFields.forEach(field => result[field] += value[field]);
+    }
+    if (!present) return {amount:null,count:null,arrivals:null,average:null,rate:null};
+    // The source report's average uses arrivals, including non-purchasers.
+    return {...result,average:result.arrivals > 0 ? result.amount / result.arrivals : null,rate:result.arrivals > 0 ? result.count / result.arrivals : null};
+  }
+  function parseAll(ranges) {
+    const newRows = parseNewRows(ranges[0]?.values), metaRows = parseMetaRows(ranges[1]?.values), budgetRows = parseBudgetRows(ranges[2]?.values);
+    if (!newRows.length || !metaRows.length) throw new Error('來源尚無可顯示的新客或 Meta 資料。');
+    for (const row of metaRows) {
+      const meta = metaTotal([row], 'all'), budget = budgetRows.find(item => item.m === row.m).meta;
+      if (meta.s !== null && budget.a !== null && Math.abs(meta.s - budget.a) > 0.01) throw new Error(`Meta 與年度預算的 ${months[row.m]} 花費不一致，請同步來源。`);
+      if (meta.partial && budget.a !== null) budget.partial = true;
+    }
+    const consumptionRows = parseConsumptionRows(ranges[3]?.values, ranges[4]?.values);
+    if(newRows.length!==consumptionRows.length) throw new Error('新客與消費月份不一致。');
+    for(const row of newRows) for(const code of storeCodes) {
+      const consumption=consumptionRows.find(r=>r.m===row.m)?.new[code];
+      const actual=consumption?.present?consumption.arrivals:null;
+      if(row[code].active!==Boolean(consumption?.present) || row[code].a!==actual) throw new Error('新客到店實績與分店消費到店數不一致。');
+    }
+    return {newRows, metaRows, budgetRows, consumptionRows};
+  }
+  const api = {months,number,storeCodes,budgetPlatformKeys,sumComplete,sumKnown,newTotal,parseNewRows,parseMetaRows,parseBudgetRows,parseAll,metaTotal,budgetAggregate,parseConsumptionRows,consumptionTotal};
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else host.SMSData = Object.freeze(api);
+})(typeof window !== 'undefined' ? window : globalThis);
+
+
+</script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>#sms-dashboard-web #pm-open{border:1px solid #4fa9a0;background:#fbffff;color:#287d77;white-space:nowrap}
+#sms-dashboard-web #pm-open:hover{background:#d8eeeb}
+#pm-dialog{border:1px solid #b9d9d5;border-radius:14px;padding:0;width:min(600px,calc(100vw - 24px));height:min(820px,calc(100dvh - 24px));max-width:none;max-height:calc(100dvh - 24px);overflow:hidden;background:#fbffff;color:#244b49;box-shadow:0 24px 80px #35291840}
+#pm-dialog::backdrop{background:#302a2359;backdrop-filter:blur(3px)}
+#pm-dialog[open]{display:flex;flex-direction:column}
+.pm-dialog-bar{height:48px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 20px;border-bottom:1px solid #d8eeeb;font:13px "Microsoft JhengHei",sans-serif;color:#287d77}
+#pm-close{font-size:25px;border:0;border-radius:6px;width:40px;height:40px;background:transparent;color:#287d77;cursor:pointer}
+#pm-close:hover{background:#d8eeeb}#pm-close:focus-visible{outline:2px solid #287d77}
+#pm-frame{width:100%;border:0;flex:1;min-height:0;background:#fbffff}
+.pm-fallback{margin:0;padding:8px 16px;border-top:1px solid #d8eeeb;font-size:12px;color:#52716f}.pm-fallback a{color:#287d77}
+.preview-banner{padding:10px;background:#fbffff;color:#287d77;font-size:12px}
+@media(max-width:600px){#pm-dialog{width:calc(100vw - 12px);height:calc(100dvh - 12px);max-height:calc(100dvh - 12px)}#sms-dashboard-web .sms-header .sms-controls{flex-wrap:wrap}}
+
+</style>
+</head>
+<body><p class="preview-banner">隔離副本驗收，測試金額不會寫入正式母檔。</p>
+
+<section id="sms-auth-wall" class="sms-auth-wall" aria-labelledby="sms-auth-title">
+  <div class="sms-auth-card">
+    <p class="sms-auth-kicker">Shine Stone SPA</p>
+    <h1 id="sms-auth-title">年度營運儀表板</h1>
+    <p>此頁不公開營運資料。請使用已取得來源 Google Sheet 權限的帳號登入。</p>
+    <button id="sms-auth-button" type="button" disabled>使用 Google 帳號登入</button>
+    <p id="sms-auth-status" class="sms-auth-status" role="status">正在準備私人資料連線…</p>
+  </div>
+</section>
+<div id="sms-dashboard-web" aria-label="澤之湯年度營運儀表板" hidden>
+  <style>
+    #sms-dashboard-web {
+      --sms-bg: #e8f6f4;
+      --sms-surface: #fbffff;
+      --sms-soft: #d8eeeb;
+      --sms-ink: #244b49;
+      --sms-muted: #52716f;
+      --sms-line: #b9d9d5;
+      --sms-rose: #4fa9a0;
+      --sms-rose-deep: #287d77;
+      --sms-sage: #78b8ad;
+      --sms-gold: #9ccbc4;
+      --sms-danger: #a85e5e;
+      color: var(--sms-ink);
+      background: var(--sms-bg);
+      border-radius: 18px;
+      padding: 24px;
+      font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      box-sizing: border-box;
+    }
+    #sms-dashboard-web * { box-sizing: border-box; }
+    #sms-dashboard-web button,
+    #sms-dashboard-web select { font: inherit; color: inherit; }
+    #sms-dashboard-web .sms-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 18px;
+      margin-bottom: 16px;
+    }
+    #sms-dashboard-web .sms-kicker {
+      margin: 0 0 5px;
+      color: var(--sms-rose-deep);
+      letter-spacing: .15em;
+      font-weight: 500;
+    }
+    #sms-dashboard-web h1 { margin: 0; font-weight: 500; letter-spacing: .02em; }
+    #sms-dashboard-web .sms-subtitle,
+    #sms-dashboard-web .sms-updated { margin: 5px 0 0; color: var(--sms-muted); }
+    #sms-dashboard-web .sms-updated { text-align: right; white-space: nowrap; }
+    #sms-dashboard-web .sms-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--sms-line);
+    }
+    #sms-dashboard-web .sms-tab {
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--sms-muted);
+      padding: 9px 14px;
+      cursor: pointer;
+      min-height: 40px;
+    }
+    #sms-dashboard-web .sms-tab[aria-selected="true"] {
+      background: var(--sms-rose);
+      color: #fff;
+    }
+    #sms-dashboard-web .sms-view[hidden] { display: none; }
+    #sms-dashboard-web .sms-controls {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    #sms-dashboard-web label { color: var(--sms-muted); }
+    #sms-dashboard-web label span { display: block; margin-bottom: 4px; }
+    #sms-dashboard-web select {
+      min-width: 132px;
+      border: 1px solid var(--sms-line);
+      border-radius: 10px;
+      background: var(--sms-surface);
+      padding: 8px 30px 8px 10px;
+      min-height: 40px;
+    }
+    #sms-dashboard-web .sms-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    #sms-dashboard-web .sms-card,
+    #sms-dashboard-web .sms-panel {
+      background: var(--sms-surface);
+      border: 1px solid var(--sms-line);
+      border-radius: 14px;
+    }
+    #sms-dashboard-web .sms-card { padding: 16px; min-width: 0; }
+    #sms-dashboard-web .sms-label { color: var(--sms-muted); margin-bottom: 8px; }
+    #sms-dashboard-web .sms-value {
+      font-size: clamp(25px, 3.3vw, 36px);
+      line-height: 1.05;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+    #sms-dashboard-web .sms-unit { font-size: .46em; color: var(--sms-muted); margin-left: 3px; }
+    #sms-dashboard-web .sms-note { margin-top: 8px; color: var(--sms-muted); }
+    #sms-dashboard-web .sms-note strong { color: var(--sms-danger); font-weight: 500; }
+    #sms-dashboard-web .sms-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(270px, .8fr);
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    #sms-dashboard-web .sms-panel { padding: 18px; min-width: 0; }
+    #sms-dashboard-web .sms-panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    #sms-dashboard-web h2 { margin: 0; font-weight: 500; }
+    #sms-dashboard-web .sms-legend { color: var(--sms-muted); white-space: nowrap; }
+    #sms-dashboard-web .sms-chart { width: 100%; min-height: 270px; }
+    #sms-dashboard-web .sms-chart svg { display: block; width: 100%; height: auto; }
+    #sms-dashboard-web .sms-axis { stroke: var(--sms-line); stroke-width: 1; }
+    #sms-dashboard-web .sms-axis-text { fill: var(--sms-muted); font-size: 12px; }
+    #sms-dashboard-web .sms-line-actual { fill: none; stroke: var(--sms-rose); stroke-width: 3; }
+    #sms-dashboard-web .sms-line-target { fill: none; stroke: var(--sms-line); stroke-width: 3; }
+    #sms-dashboard-web .sms-dot-actual { fill: var(--sms-rose-deep); stroke: var(--sms-surface); stroke-width: 2; }
+    #sms-dashboard-web .sms-dot-target { fill: var(--sms-line); stroke: var(--sms-surface); stroke-width: 2; }
+    #sms-dashboard-web .sms-store { padding: 10px 0 14px; border-bottom: 1px solid var(--sms-line); }
+    #sms-dashboard-web .sms-store:last-child { border-bottom: 0; }
+    #sms-dashboard-web .sms-store-title,
+    #sms-dashboard-web .sms-store-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+    }
+    #sms-dashboard-web .sms-store-meta { color: var(--sms-muted); margin-top: 8px; }
+    #sms-dashboard-web .sms-track { height: 9px; border-radius: 99px; background: var(--sms-soft); overflow: hidden; margin-top: 9px; }
+    #sms-dashboard-web .sms-fill { height: 100%; border-radius: inherit; background: var(--sms-rose); }
+    #sms-dashboard-web .sms-fill.sage { background: var(--sms-sage); }
+    #sms-dashboard-web .sms-table-wrap { overflow-x: auto; }
+    #sms-dashboard-web table { width: 100%; border-collapse: collapse; min-width: 660px; }
+    #sms-dashboard-web th,
+    #sms-dashboard-web td { padding: 10px 8px; border-bottom: 1px solid var(--sms-line); text-align: right; white-space: nowrap; }
+    #sms-dashboard-web th:first-child,
+    #sms-dashboard-web td:first-child { text-align: left; }
+    #sms-dashboard-web th { color: var(--sms-muted); font-weight: 500; background: var(--sms-soft); }
+    #sms-dashboard-web td { font-variant-numeric: tabular-nums; }
+    #sms-dashboard-web tr[data-current="true"] { background: #d9efec; }
+    #sms-dashboard-web .sms-status-good { color: #37766b; }
+    #sms-dashboard-web .sms-status-warn { color: var(--sms-danger); }
+    #sms-dashboard-web .sms-bars { display: grid; gap: 11px; }
+    #sms-dashboard-web .sms-bar-row {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr) 86px;
+      gap: 10px;
+      align-items: center;
+    }
+    #sms-dashboard-web .sms-bar-track { height: 14px; background: var(--sms-soft); border-radius: 99px; overflow: hidden; }
+    #sms-dashboard-web .sms-bar { height: 100%; background: var(--sms-rose); border-radius: inherit; min-width: 2px; }
+    #sms-dashboard-web .sms-bar.sage { background: var(--sms-sage); }
+    #sms-dashboard-web .sms-bar-value { text-align: right; color: var(--sms-muted); font-variant-numeric: tabular-nums; }
+    #sms-dashboard-web .sms-footnote { margin: 10px 0 0; color: var(--sms-muted); }
+    @media (max-width: 820px) {
+      #sms-dashboard-web { padding: 16px; }
+      #sms-dashboard-web .sms-header { align-items: flex-start; flex-direction: column; }
+      #sms-dashboard-web .sms-updated { text-align: left; }
+      #sms-dashboard-web .sms-tabs { overflow-x: auto; }
+      #sms-dashboard-web .sms-tab { white-space: nowrap; }
+      #sms-dashboard-web .sms-controls { justify-content: flex-start; }
+      #sms-dashboard-web .sms-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      #sms-dashboard-web .sms-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 460px) {
+      #sms-dashboard-web { padding: 14px; border-radius: 0; }
+      #sms-dashboard-web .sms-stats { grid-template-columns: 1fr; }
+      #sms-dashboard-web .sms-controls label { width: calc(50% - 5px); }
+      #sms-dashboard-web .sms-controls select { width: 100%; min-width: 0; }
+      #sms-dashboard-web .sms-bar-row { grid-template-columns: 48px minmax(0, 1fr) 72px; gap: 7px; }
+      #sms-dashboard-web .sms-panel { padding: 14px; }
+    }
+  </style>
+
+  <header class="sms-header">
+    <div>
+      <p class="sms-kicker">Shine Stone SPA</p>
+      <h1>年度營運儀表板</h1>
+      <p class="sms-subtitle">澤之湯｜2026 年度新客到店、消費、Meta 與預算分析</p>
+    </div>
+    <div><p class="sms-updated" id="sms-data-updated" role="status">等待授權讀取資料</p><div class="sms-controls" style="margin:8px 0 0"><button class="sms-tab" id="sms-refresh" type="button">更新資料</button><button class="sms-tab" id="pm-open" type="button">登錄費用</button><button class="sms-tab" id="sms-signout" type="button">登出儀表板</button></div></div>
+  </header>
+
+  <nav class="sms-tabs" aria-label="儀表板頁面">
+    <button class="sms-tab" type="button" role="tab" aria-selected="true" data-view="new">新客營運</button>
+    <button class="sms-tab" type="button" role="tab" aria-selected="false" data-view="consumption">消費表現</button>
+    <button class="sms-tab" type="button" role="tab" aria-selected="false" data-view="meta">Meta 廣告</button>
+    <button class="sms-tab" type="button" role="tab" aria-selected="false" data-view="budget">年度預算</button>
+  </nav>
+
+  <section class="sms-view" data-panel="new">
+    <div class="sms-controls">
+      <label><span>檢視方式</span><select id="sms-new-mode"><option value="cumulative">年度累積</option><option value="monthly">單月檢討</option></select></label>
+      <label><span>分店</span><select id="sms-new-store"><option value="all">全部分店</option><option value="zl">中壢岩盤浴</option><option value="bd">八德岩盤浴</option><option value="tc">台中岩盤浴</option><option value="tp">台北岩盤浴</option><option value="zx">忠孝岩盤浴</option><option value="bc">板橋岩盤浴</option><option value="ty">桃園岩盤浴</option><option value="ld">羅東岩盤浴</option><option value="qp">青埔岩盤浴</option></select></label>
+      <label><span>截至月份</span><select id="sms-new-month"></select></label>
+    </div>
+    <div class="sms-stats">
+      <div class="sms-card"><div class="sms-label">新客到店實績</div><div class="sms-value" id="sms-new-actual"></div><div class="sms-note" id="sms-new-period"></div></div>
+      <div class="sms-card"><div class="sms-label">新客目標</div><div class="sms-value" id="sms-new-target"></div><div class="sms-note" id="sms-new-target-note"></div></div>
+      <div class="sms-card"><div class="sms-label">落後／超前</div><div class="sms-value" id="sms-new-gap"></div><div class="sms-note" id="sms-new-gap-note"></div></div>
+      <div class="sms-card"><div class="sms-label">新客達成率</div><div class="sms-value" id="sms-new-rate"></div><div class="sms-note">依所選月份與分店計算</div></div>
+    </div>
+    <div class="sms-grid">
+      <div class="sms-panel">
+        <div class="sms-panel-head"><h2>新客到店趨勢</h2><span class="sms-legend">湖水綠：到店實績｜淡線：目標</span></div>
+        <div class="sms-chart" id="sms-new-chart"></div>
+      </div>
+      <div class="sms-panel">
+        <div class="sms-panel-head"><h2>分店累積進度</h2></div>
+        <div id="sms-store-progress"></div>
+      </div>
+    </div>
+    <div class="sms-panel">
+      <div class="sms-panel-head"><h2>月份新客到店明細</h2><span class="sms-legend" id="sms-new-table-label"></span></div>
+      <div class="sms-table-wrap"><table><thead><tr><th>月份</th><th>中壢實績／目標</th><th>八德實績／目標</th><th>台中實績／目標</th><th>台北實績／目標</th><th>忠孝實績／目標</th><th>板橋實績／目標</th><th>桃園實績／目標</th><th>羅東實績／目標</th><th>青埔實績／目標</th><th>整體實績／目標</th><th id="sms-new-rate-heading">整體達成率</th></tr></thead><tbody id="sms-new-table"></tbody><tfoot id="sms-new-total"></tfoot></table></div>
+      <p class="sms-footnote">新客一律以月報「依預約日期／新客各店消費表」的有到店數計算，不使用消費數或客服詢問數。尚未提供的分店目標保留「待補」，不以 0 代替，也不計算達成率。</p>
+    </div>
+  </section>
+
+  <section class="sms-view" data-panel="consumption" hidden>
+    <div class="sms-controls">
+      <label><span>檢視方式</span><select id="sms-consumption-mode"><option value="cumulative">年度累積</option><option value="monthly">單月檢討</option></select></label>
+      <label><span>客群</span><select id="sms-consumption-cohort"><option value="new">新客</option><option value="returning">舊客</option><option value="all">新客＋舊客</option></select></label>
+      <label><span>分店</span><select id="sms-consumption-store"><option value="all">全部分店</option><option value="zl">中壢岩盤浴</option><option value="bd">八德岩盤浴</option><option value="tc">台中岩盤浴</option><option value="tp">台北岩盤浴</option><option value="zx">忠孝岩盤浴</option><option value="bc">板橋岩盤浴</option><option value="ty">桃園岩盤浴</option><option value="ld">羅東岩盤浴</option><option value="qp">青埔岩盤浴</option></select></label>
+      <label><span>截至月份</span><select id="sms-consumption-month"></select></label>
+    </div>
+    <div class="sms-stats">
+      <div class="sms-card"><div class="sms-label">消費金額</div><div class="sms-value" id="sms-consumption-amount"></div><div class="sms-note" id="sms-consumption-period"></div></div>
+      <div class="sms-card"><div class="sms-label">消費數</div><div class="sms-value" id="sms-consumption-count"></div><div class="sms-note">沿用月報計數，累積值未跨月去重</div></div>
+      <div class="sms-card"><div class="sms-label">平均客單（依到店數）</div><div class="sms-value" id="sms-consumption-average"></div><div class="sms-note">消費金額 ÷ 到店數，沿用月報口徑</div></div>
+      <div class="sms-card"><div class="sms-label">到店消費率</div><div class="sms-value" id="sms-consumption-rate"></div><div class="sms-note" id="sms-consumption-arrivals"></div></div>
+    </div>
+    <div class="sms-grid">
+      <div class="sms-panel">
+        <div class="sms-panel-head"><h2>每月消費金額</h2></div>
+        <div class="sms-bars" id="sms-consumption-bars"></div>
+      </div>
+      <div class="sms-panel">
+        <div class="sms-panel-head"><h2>分店金額占比</h2></div>
+        <div id="sms-consumption-stores"></div>
+        <p class="sms-note">依上方所選期間與客群計算，與單店檢視共用期間。</p>
+      </div>
+    </div>
+    <div class="sms-panel">
+      <div class="sms-panel-head"><h2>月份消費明細</h2><span class="sms-legend" id="sms-consumption-table-label"></span></div>
+      <div class="sms-table-wrap"><table><thead><tr><th>月份</th><th>消費金額</th><th>消費數</th><th>到店數</th><th>平均客單</th><th>到店消費率</th></tr></thead><tbody id="sms-consumption-table"></tbody><tfoot id="sms-consumption-total"></tfoot></table></div>
+      <p class="sms-footnote">資料來自「月報總覽／分店消費」，依預約日期歸屬月份，不等於入帳月份或全店營收。新舊客分開計算；累積客單與消費率以總額、總數重算，不平均各月比率。不使用客服人工詢問數，亦不將此金額直接當成 Meta 廣告收益。</p>
+    </div>
+  </section>
+
+  <section class="sms-view" data-panel="meta" hidden>
+    <div class="sms-controls">
+      <label><span>分店</span><select id="sms-meta-store"><option value="all">全部分店</option><option value="zl">中壢岩盤浴</option><option value="bd">八德岩盤浴</option><option value="tc">台中岩盤浴</option><option value="tp">台北岩盤浴</option><option value="zx">忠孝岩盤浴</option><option value="bc">板橋岩盤浴</option><option value="ty">桃園岩盤浴</option><option value="ld">羅東岩盤浴</option><option value="qp">青埔岩盤浴</option></select></label>
+      <label><span>截至月份</span><select id="sms-meta-month"></select></label>
+    </div>
+    <div class="sms-stats">
+      <div class="sms-card"><div class="sms-label">Meta 實際花費</div><div class="sms-value" id="sms-meta-spend"></div><div class="sms-note" id="sms-meta-period"></div></div>
+      <div class="sms-card"><div class="sms-label">Meta 詢問數</div><div class="sms-value" id="sms-meta-inquiries"></div><div class="sms-note">平台「訊息對話開始次數」</div></div>
+      <div class="sms-card"><div class="sms-label">整體 Meta CPA</div><div class="sms-value" id="sms-meta-cpa"></div><div class="sms-note">訊息廣告花費 ÷ Meta 詢問數</div></div>
+      <div class="sms-card"><div class="sms-label">預算執行率</div><div class="sms-value" id="sms-meta-rate"></div><div class="sms-note">實際花費 ÷ Meta 預算</div></div>
+    </div>
+    <div class="sms-grid">
+      <div class="sms-panel">
+        <div class="sms-panel-head"><h2>每月實際花費</h2><span class="sms-legend">湖水綠：Meta 花費</span></div>
+        <div class="sms-bars" id="sms-meta-bars"></div>
+      </div>
+      <div class="sms-panel">
+        <div class="sms-panel-head"><h2>資料口徑</h2></div>
+        <p class="sms-note" id="sms-meta-completeness"></p>
+        <p class="sms-note">僅使用 Meta 平台「訊息對話開始次數」，不納入客服人工登記詢問數。所有金額以 TWD 呈現；帳戶 529534211092557 的宜蘭投放固定以匯率 33 換算後歸入羅東岩盤浴，原始 USD 保留於母檔查詢備註。整體數字含無法歸屬單店的品牌整體活動；切換單店時只顯示活動名稱可明確歸店的資料。</p>
+      </div>
+    </div>
+    <div class="sms-panel">
+      <div class="sms-panel-head"><h2>月份 Meta 明細</h2><span class="sms-legend">全品牌：年度預算｜單店：G 欄分配</span></div>
+      <div class="sms-table-wrap"><table><thead><tr><th>月份</th><th>實際花費</th><th>Meta 詢問</th><th>CPA</th><th>Meta 預算</th><th>執行率</th><th>完整性</th></tr></thead><tbody id="sms-meta-table"></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="sms-view" data-panel="budget" hidden>
+    <div class="sms-controls">
+      <label><span>預算類型</span><select id="sms-budget-type"><option value="all">全部預算</option><option value="meta">Meta 廣告</option><option value="g_keyword">Google 關鍵字</option><option value="g_display">Google 多媒體</option><option value="lap">LAP 品牌私域</option><option value="tiktok">TikTok 廣告</option></select></label>
+      <label><span>實際花費截至</span><select id="sms-budget-month"></select></label>
+    </div>
+    <div class="sms-stats">
+      <div class="sms-card"><div class="sms-label">115 年度總預算</div><div class="sms-value" id="sms-budget-total"></div><div class="sms-note">年度區間 2025/12－2026/11</div></div>
+      <div class="sms-card"><div class="sms-label">累積實際花費</div><div class="sms-value" id="sms-budget-actual"></div><div class="sms-note" id="sms-budget-period"></div></div>
+      <div class="sms-card"><div class="sms-label">全年剩餘預算</div><div class="sms-value" id="sms-budget-remaining"></div><div class="sms-note">全年預算－目前實際花費</div></div>
+      <div class="sms-card"><div class="sms-label">全年預算執行率</div><div class="sms-value" id="sms-budget-rate"></div><div class="sms-note">目前花費 ÷ 全年預算</div></div>
+    </div>
+    <div class="sms-grid">
+      <div class="sms-panel">
+        <div class="sms-panel-head"><h2>每月預算與實際花費</h2><span class="sms-legend">淺綠：預算｜湖水綠：實際</span></div>
+        <div class="sms-bars" id="sms-budget-bars"></div>
+      </div>
+      <div class="sms-panel">
+        <div class="sms-panel-head"><h2>執行提醒</h2></div>
+        <p class="sms-note" id="sms-budget-callout"></p>
+        <p class="sms-note">預算為零但有花費時列為超支，不計算除以零的執行率。部分花費不代表完整支出，剩餘預算僅供參考。</p>
+      </div>
+    </div>
+    <div class="sms-panel">
+      <div class="sms-panel-head"><h2>年度月份明細</h2><span class="sms-legend">未有實際花費的月份顯示「待補」</span></div>
+      <div class="sms-table-wrap"><table><thead><tr><th>月份</th><th>預算</th><th>實際花費</th><th>執行率</th><th>剩餘／超支</th><th>狀態</th></tr></thead><tbody id="sms-budget-table"></tbody></table></div>
+    </div>
+  </section>
+
+  <script>(() => {
+  'use strict';
+  const root = document.getElementById('sms-dashboard-web');
+  const {months,parseAll,metaTotal,budgetAggregate,consumptionTotal,storeCodes,sumComplete,sumKnown,newTotal} = window.SMSData;
+  const authWall=document.getElementById('sms-auth-wall'), authButton=document.getElementById('sms-auth-button'), authStatus=document.getElementById('sms-auth-status');
+  const config=window.SMS_CONFIG||{};
+  let newRows=[],metaRows=[],budgetRows=[],consumptionRows=[];
+  let tokenClient=null,sessionToken=null,tokenExpires=0,expiryTimer=null,busy=false,requestVersion=0;
+  const expenseOrigin='https://n-nyv2a7tyteysbqzgtso5lxujk4ijgczxqkvrlki-0lu-script.googleusercontent.com';
+  let deliveredExpenseChannel=null;
+  window.addEventListener('message',event=>{
+    const frame=document.getElementById('pm-frame'),message=event.data;
+    if(event.origin!==expenseOrigin||!event.source||message?.type!=='ss-expense-ready'||
+      !frame?.src||!frame.dataset.channel||message.channel!==frame.dataset.channel||
+      deliveredExpenseChannel===message.channel)return;
+    if(!sessionToken||Date.now()>=tokenExpires){
+      event.source.postMessage({type:'ss-expense-auth-error',channel:message.channel},event.origin);return;
+    }
+    deliveredExpenseChannel=message.channel;
+    // Deliver only to the verified child window and exact origin, without persistence.
+    event.source.postMessage({type:'ss-expense-google-auth',channel:message.channel,accessToken:sessionToken},event.origin);
+  });
+  const $=selector=>root.querySelector(selector);
+  const fmt=n=>n===null?'待補':String(Math.round(n));
+  const pct=n=>Number.isFinite(n)?(n*100).toFixed(1)+'%':'—';
+  const unit=(value,suffix='')=>fmt(value)+'<span class="sms-unit">'+suffix+'</span>';
+  const sum=(arr,fn)=>arr.reduce((total,item)=>total+(fn(item)||0),0);
+  const stores=(row,store)=>store==='all'?storeCodes.map(code=>row[code]):[row[store]];
+  const storeNames={
+    zl:'中壢岩盤浴',
+    bd:'八德岩盤浴',
+    tc:'台中岩盤浴',
+    tp:'台北岩盤浴',
+    zx:'忠孝岩盤浴',
+    bc:'板橋岩盤浴',
+    ty:'桃園岩盤浴',
+    ld:'羅東岩盤浴',
+    qp:'青埔岩盤浴'
+  };
+  const storeName=store=>storeNames[store]||'整體';
+  const setAuthStatus=(message,error=false)=>{authStatus.textContent=message;authStatus.dataset.error=String(error);};
+  function fillMonthSelect(select,available) {
+    const previous=select.value,max=Math.max(...available);
+    select.innerHTML=available.slice().sort((a,b)=>b-a).map(i=>'<option value="'+i+'"'+(i===max?' selected':'')+'>'+months[i]+'</option>').join('');
+    if(previous!==''&&available.includes(Number(previous))) select.value=previous;
+  }
+  function signOut(message='已登出儀表板。') {
+    requestVersion++;
+    sessionToken=null;tokenExpires=0;
+    deliveredExpenseChannel=null;
+    window.dispatchEvent(new CustomEvent('ss:expense-signout'));
+    window.clearTimeout(expiryTimer);
+    newRows=[];metaRows=[];budgetRows=[];consumptionRows=[];
+    root.hidden=true;authWall.hidden=false;
+    // Remove financial data from the DOM, not just from the visible layout.
+    root.querySelectorAll('[id^="sms-new-"],[id^="sms-meta-"],[id^="sms-budget-"],[id^="sms-consumption-"],#sms-store-progress').forEach(el=>{
+      if(el.tagName!=='SELECT') el.replaceChildren();
+      else if(el.id.endsWith('-month')) el.replaceChildren();
+    });
+    authButton.disabled=!tokenClient;
+    setAuthStatus(message);
+  }
+  const rangeSpecs=[
+    {sheet:'月度KPI',range:'月度KPI!A1:Y200'},
+    {sheet:'Meta月度KPI',range:'Meta月度KPI!A1:T200'},
+    {sheet:'年度預算',range:'年度預算!A1:R100'},
+    {sheet:'月報總覽',range:'月報總覽!A1:P40'},
+    {sheet:'分店消費',range:'分店消費!A1:R1000'}
+  ];
+  const sheetName=value=>String(value||'').split('!')[0].replace(/^'|'$/g,'').replace(/''/g,"'");
+  async function fetchRanges(accessToken,specs) {
+    const query=specs.map(spec=>'ranges='+encodeURIComponent(spec.range)).join('&');
+    const endpoint='https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(config.sheetId)+'/values:batchGet?'+query+'&majorDimension=ROWS&valueRenderOption=UNFORMATTED_VALUE';
+    const response=await fetch(endpoint,{headers:{Authorization:'Bearer '+accessToken},cache:'no-store',signal:AbortSignal.timeout(20000)});
+    if(!response.ok) {
+      if(response.status===403) throw new Error('此 Google 帳號沒有讀取權限，或 Sheets API 尚未開通。');
+      if(response.status===401) throw new Error('Google 登入已到期，請重新登入。');
+      throw new Error('Google Sheets 讀取失敗 ('+response.status+')。');
+    }
+    const payload=await response.json(),valueRanges=payload.valueRanges||[];
+    const bySheet=new Map(valueRanges.filter(item=>item.range).map(item=>[sheetName(item.range),item]));
+    return specs.map((spec,index)=>bySheet.get(spec.sheet)||(!valueRanges[index]?.range?valueRanges[index]:undefined)||{values:[]});
+  }
+  async function fetchSheetData(accessToken,version) {
+    const ordered=await fetchRanges(accessToken,rangeSpecs);
+    let next;
+    try {
+      next=parseAll(ordered);
+    } catch(error) {
+      if(!/年度預算須具備十二個月份/.test(error.message)) throw error;
+      // A transient partial batch response must not send an authorized user back to the login wall.
+      [ordered[2]]=await fetchRanges(accessToken,[rangeSpecs[2]]);
+      next=parseAll(ordered);
+    }
+    if(version!==requestVersion) return false;
+    ({newRows,metaRows,budgetRows,consumptionRows}=next);
+    return true;
+  }
+  function renderPrivateDashboard() {
+    fillMonthSelect($('#sms-new-month'),newRows.map(row=>row.m));
+    fillMonthSelect($('#sms-meta-month'),metaRows.map(row=>row.m));
+    fillMonthSelect($('#sms-consumption-month'),consumptionRows.map(row=>row.m));
+    const knownBudgetMonths=budgetRows.filter(row=>budgetAggregate(row,'all').a!==null).map(row=>row.m);
+    fillMonthSelect($('#sms-budget-month'),knownBudgetMonths.length?knownBudgetMonths:newRows.map(row=>row.m));
+    if(metaRows.every(row=>metaTotal([row],'all').s===null)) $('#sms-meta-month').value=String(newRows.at(-1).m);
+    $('#sms-data-updated').textContent='更新完成 '+new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+'｜每 5 分鐘更新';
+    updateNew();updateMeta();updateBudget();updateConsumption();
+    authWall.hidden=true;root.hidden=false;
+  }
+  async function refreshData() {
+    if(busy) return;
+    if(!sessionToken||Date.now()>=tokenExpires){signOut('登入已到期，請重新登入。');return;}
+    busy=true;
+    const version=++requestVersion;
+    $('#sms-refresh').disabled=true;authButton.disabled=true;
+    $('#sms-refresh').textContent='更新中…';
+    $('#sms-data-updated').textContent='更新中，正在讀取 Google Sheet…';
+    setAuthStatus('正在讀取 Google Sheet…');
+    try {
+      if(await fetchSheetData(sessionToken,version)) renderPrivateDashboard();
+    } catch(error) {
+      if(version===requestVersion){
+        const reason=error.name==='TimeoutError'?'Google Sheet 回應逾時，請稍後重新登入再試。':
+          /Failed to fetch|NetworkError|Load failed/i.test(error.message)?'無法連上 Google Sheet，請確認網路後重新登入再試。':error.message;
+        signOut();setAuthStatus('更新失敗：'+reason,true);
+      }
+    } finally {
+      busy=false;$('#sms-refresh').disabled=false;$('#sms-refresh').textContent='更新資料';authButton.disabled=!tokenClient;
+    }
+  }
+  function initializePrivateDashboard() {
+    if(!config.sheetId||!config.googleClientId){setAuthStatus('尚未設定私人資料連線。',true);return;}
+    const loadTimeout=window.setTimeout(()=>{
+      window.clearInterval(waitForGoogle);
+      if(!tokenClient) setAuthStatus('Google 登入元件載入失敗，請重新整理頁面。',true);
+    },10000);
+    const waitForGoogle=window.setInterval(()=>{
+      if(!window.google?.accounts?.oauth2) return;
+      window.clearInterval(waitForGoogle);window.clearTimeout(loadTimeout);
+      tokenClient=google.accounts.oauth2.initTokenClient({
+        client_id:config.googleClientId,
+        scope:'https://www.googleapis.com/auth/spreadsheets.readonly openid https://www.googleapis.com/auth/userinfo.email',
+        callback:response=>{
+          if(response.error||!response.access_token){authButton.disabled=false;setAuthStatus('Google 授權未完成，請重新登入。',true);return;}
+          sessionToken=response.access_token;
+          tokenExpires=Date.now()+(Number(response.expires_in)||3600)*1000;
+          window.clearTimeout(expiryTimer);
+          expiryTimer=window.setTimeout(()=>signOut('登入已到期，請重新登入。'),tokenExpires-Date.now());
+          refreshData();
+        },
+        error_callback:()=>{authButton.disabled=false;setAuthStatus('登入視窗未完成；請允許彈出視窗後再試。',true);}
+      });
+      authButton.disabled=false;setAuthStatus('請使用有權限的 Google 帳號登入。');
+    },100);
+    authButton.addEventListener('click',()=>{
+      if(!tokenClient) return;
+      setAuthStatus('請在 Google 授權視窗完成登入；若未出現，可再次按登入。');
+      tokenClient.requestAccessToken({prompt:'select_account'});
+    });
+    $('#sms-refresh').addEventListener('click',refreshData);
+    $('#sms-signout').addEventListener('click',()=>signOut());
+    window.setInterval(()=>{if(sessionToken&&!document.hidden) refreshData();},300000);
+    window.addEventListener('pagehide',()=>signOut());
+  }
+  function lineChart(actual, targets, labels) {
+    const w=680,h=285,left=52,right=18,top=24,bottom=44,max=Math.max(...actual,...targets.filter(v=>v!==null),1)*1.12;
+    const x=i=>left+(w-left-right)*(labels.length===1?.5:i/(labels.length-1));
+    const y=v=>top+(h-top-bottom)*(1-v/max);
+    const path=values=>values.map((v,i)=>v===null?'':(i===0||values[i-1]===null?'M':'L')+x(i)+','+y(v)).join(' ');
+    const grid=[0,.25,.5,.75,1].map(k=>'<line class="sms-axis" x1="'+left+'" y1="'+y(max*k)+'" x2="'+(w-right)+'" y2="'+y(max*k)+'"></line><text class="sms-axis-text" x="'+(left-8)+'" y="'+(y(max*k)+4)+'" text-anchor="end">'+fmt(max*k)+'</text>').join('');
+    const xt=labels.map((label,i)=>'<text class="sms-axis-text" x="'+x(i)+'" y="'+(h-14)+'" text-anchor="middle">'+label.replace('2025/','25/').replace('2026/','')+'</text>').join('');
+    const dots=(values,kind)=>values.map((v,i)=>v===null?'':'<circle class="sms-dot-'+kind+'" cx="'+x(i)+'" cy="'+y(v)+'" r="5"><title>'+labels[i]+' '+(kind==='actual'?'實績':'目標')+' '+fmt(v)+'</title></circle>').join('');
+    return '<svg viewBox="0 0 '+w+' '+h+'" role="img" aria-label="新客到店實績與目標趨勢"><title>新客到店實績與目標趨勢</title>'+grid+'<path class="sms-line-target" d="'+path(targets)+'"></path><path class="sms-line-actual" d="'+path(actual)+'"></path>'+dots(targets,'target')+dots(actual,'actual')+xt+'</svg>';
+  }
+  function updateNew() {
+    const mode=$('#sms-new-mode').value,store=$('#sms-new-store').value,cutoff=Number($('#sms-new-month').value);
+    const rows=newRows.filter(r=>r.m<=cutoff),active=mode==='monthly'?rows.filter(r=>r.m===cutoff):rows;
+    const {a,t,d,rate}=newTotal(active,store),hasData=a!==null;
+    $('#sms-new-actual').innerHTML=hasData?unit(a,'人'):'—';
+    $('#sms-new-target').innerHTML=hasData?unit(t,'人'):'—';
+    $('#sms-new-rate').textContent=!hasData?'—':t===null?'待補目標':pct(rate);
+    $('#sms-new-gap').innerHTML=!hasData?'—':d===null?'待補目標':unit(Math.abs(d),'人');
+    $('#sms-new-gap-note').textContent=!hasData?'所選期間月報未列此分店':d===null?'目標確認後自動計算':storeName(store)+(d>=0?'超前':'落後')+' '+fmt(Math.abs(d));
+    $('#sms-new-period').textContent=mode==='monthly'?months[cutoff]:'2025/12－'+months[cutoff];
+    $('#sms-new-target-note').textContent=!hasData?'無可計算的分店實績':t===null?'所選期間尚有未提供的目標':mode==='monthly'?'單月目標':'已計入 '+rows.length+' 個月份';
+    const series=rows.map((r,i)=>newTotal(mode==='monthly'?[r]:rows.slice(0,i+1),store));
+    $('#sms-new-chart').innerHTML=lineChart(series.map(v=>v.a),series.map(v=>v.t),rows.map(r=>months[r.m]));
+    $('#sms-store-progress').innerHTML=storeCodes.map(code=>{
+      const v=newTotal(rows,code);
+      if(v.a===null) return '<div class="sms-store"><div class="sms-store-title"><strong>'+storeName(code)+'</strong><span>無資料</span></div><div class="sms-store-meta"><span>截至所選月份尚未列入月報</span></div></div>';
+      return '<div class="sms-store"><div class="sms-store-title"><strong>'+storeName(code)+'</strong><span>'+(v.t===null?'目標待補':pct(v.rate))+'</span></div>'+(v.t===null?'':'<div class="sms-track"><div class="sms-fill" style="width:'+Math.min((v.rate||0)*100,100)+'%"></div></div>')+'<div class="sms-store-meta"><span>實績 '+fmt(v.a)+' 人</span><span>'+(v.d===null?'':(v.d>=0?'超前':'落後')+' '+fmt(Math.abs(v.d)))+'</span></div></div>';
+    }).join('');
+    const cells=selection=>{
+      const total=newTotal(selection,'all'),filtered=newTotal(selection,store);
+      return storeCodes.map(code=>{
+        const v=newTotal(selection,code);
+        return v.a===null?'<td tabindex="0" title="該月報未列此分店">—</td>':'<td tabindex="0" title="實績 '+fmt(v.a)+' / 目標 '+fmt(v.t)+'">'+fmt(v.a)+' / '+fmt(v.t)+'</td>';
+      }).join('')+'<td>'+fmt(total.a)+' / '+fmt(total.t)+'</td><td>'+(filtered.a===null?'—':filtered.t===null?'待補目標':pct(filtered.rate))+'</td>';
+    };
+    $('#sms-new-table-label').textContent='顯示至 '+months[cutoff];
+    $('#sms-new-table').innerHTML=rows.slice().reverse().map(r=>'<tr data-current="'+(r.m===cutoff)+'"><td>'+months[r.m]+'</td>'+cells([r])+'</tr>').join('');
+    $('#sms-new-total').innerHTML='<tr><th>年度累積</th>'+cells(rows)+'</tr>';
+    $('#sms-new-rate-heading').textContent=store==='all'?'整體達成率':storeName(store)+'達成率';
+  }
+
+  function updateConsumption() {
+    const mode=$('#sms-consumption-mode').value,store=$('#sms-consumption-store').value,cohort=$('#sms-consumption-cohort').value;
+    const cutoff=Number($('#sms-consumption-month').value),rows=consumptionRows.filter(r=>r.m<=cutoff);
+    const active=mode==='monthly'?rows.filter(r=>r.m===cutoff):rows,total=consumptionTotal(active,store,cohort);
+    const cohortName=cohort==='new'?'新客':cohort==='returning'?'舊客':'新客＋舊客',hasData=total.amount!==null;
+    $('#sms-consumption-amount').innerHTML=hasData?unit(total.amount,'元'):'—';
+    $('#sms-consumption-count').innerHTML=hasData?unit(total.count,'筆'):'—';
+    $('#sms-consumption-average').innerHTML=total.average===null?'—':unit(total.average,'元');
+    $('#sms-consumption-rate').textContent=pct(total.rate);
+    $('#sms-consumption-arrivals').textContent=total.arrivals===null?'所選期間月報未列此分店':'消費數 ÷ 到店數｜到店 '+fmt(total.arrivals)+' 筆';
+    $('#sms-consumption-period').textContent=(mode==='monthly'?months[cutoff]:'2025/12－'+months[cutoff])+'｜'+storeName(store)+'｜'+cohortName;
+    const knownAmounts=rows.map(r=>consumptionTotal([r],store,cohort).amount).filter(Number.isFinite);
+    const max=Math.max(...knownAmounts,1);
+    $('#sms-consumption-bars').innerHTML=rows.map(r=>{
+      const v=consumptionTotal([r],store,cohort),known=v.amount!==null;
+      return '<div class="sms-bar-row"><span>'+months[r.m].slice(2)+'</span><div class="sms-bar-track"><div class="sms-bar" style="width:'+(known?v.amount/max*100:0)+'%;min-width:0"></div></div><span class="sms-bar-value" title="'+months[r.m]+' '+(known?fmt(v.amount)+' 元':'無資料')+'">'+(known?fmt(v.amount):'—')+'</span></div>';
+    }).join('');
+    const combined=consumptionTotal(active,'all',cohort).amount;
+    $('#sms-consumption-stores').innerHTML=storeCodes.map((code,index)=>{
+      const v=consumptionTotal(active,code,cohort);
+      if(v.amount===null) return '<div class="sms-store"><div class="sms-store-title"><strong>'+storeName(code)+'</strong><span>無資料</span></div><div class="sms-store-meta"><span>所選期間月報未列此分店</span></div></div>';
+      const share=combined>0?v.amount/combined:null;
+      return '<div class="sms-store"><div class="sms-store-title"><strong>'+storeName(code)+'</strong><span>'+pct(share)+'</span></div><div class="sms-track"><div class="sms-fill '+(index%2?'sage':'')+'" style="width:'+((share||0)*100)+'%"></div></div><div class="sms-store-meta"><span>'+fmt(v.amount)+' 元</span><span>消費 '+fmt(v.count)+' 筆</span></div></div>';
+    }).join('');
+    const cells=v=>v.amount===null?'<td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>':'<td>'+fmt(v.amount)+'</td><td>'+fmt(v.count)+'</td><td>'+fmt(v.arrivals)+'</td><td>'+(v.average===null?'—':fmt(v.average))+'</td><td>'+pct(v.rate)+'</td>';
+    $('#sms-consumption-table-label').textContent=storeName(store)+'｜'+cohortName;
+    $('#sms-consumption-table').innerHTML=active.slice().reverse().map(r=>'<tr data-current="'+(r.m===cutoff)+'"><td>'+months[r.m]+'</td>'+cells(consumptionTotal([r],store,cohort))+'</tr>').join('');
+    $('#sms-consumption-total').innerHTML='<tr><th>'+(mode==='monthly'?'單月合計':'年度累積')+'</th>'+cells(total)+'</tr>';
+  }
+
+  function metaWithAnnualPlan(rows,store) {
+    const result=metaTotal(rows,store);
+    if(store!=='all') return result;
+    const budget=sumComplete(rows.map(row=>budgetRows.find(item=>item.m===row.m)?.meta.b??null));
+    return {...result,b:budget,rate:budget>0&&result.s!==null?result.s/budget:null};
+  }
+  function updateMeta() {
+    const store=$('#sms-meta-store').value,cutoff=Number($('#sms-meta-month').value);
+    const rows=metaRows.filter(r=>r.m<=cutoff),total=metaWithAnnualPlan(rows,store);
+    $('#sms-meta-spend').innerHTML=unit(total.s,'元');
+    $('#sms-meta-inquiries').innerHTML=unit(total.q,'筆');
+    $('#sms-meta-cpa').innerHTML=total.cpa===null?'—':unit(total.cpa,'元');
+    $('#sms-meta-rate').textContent=total.rate===null?'—':pct(total.rate);
+    $('#sms-meta-period').textContent='2025/12－'+months[cutoff]+'｜'+storeName(store)+'｜'+total.status;
+    const partial=rows.filter(r=>metaTotal([r],store).status!=='已確認').map(r=>months[r.m]);
+    const budgetCopy=store==='all'?'全品牌 Meta 預算採「年度預算」頁籤的每月核定額。':'單店 Meta 預算採「Meta月度KPI」G 欄的 PM 分配額。';
+    $('#sms-meta-completeness').textContent=(partial.length?'部分資料或待補月份：'+partial.join('、')+'。卡片與 CPA 僅依已取得數據計算。':'所選期間與分店資料已確認。')+budgetCopy;
+    const max=Math.max(...rows.map(r=>metaTotal([r],store).s||0),1);
+    $('#sms-meta-bars').innerHTML=rows.map(r=>{const v=metaTotal([r],store);return '<div class="sms-bar-row"><span>'+months[r.m].slice(5)+'</span><div class="sms-bar-track"><div class="sms-bar" style="width:'+((v.s||0)/max*100)+'%;min-width:0"></div></div><span class="sms-bar-value" title="'+v.status+'">'+fmt(v.s)+'</span></div>';}).join('');
+    $('#sms-meta-table').innerHTML=rows.map(r=>{const v=metaWithAnnualPlan([r],store);return '<tr data-current="'+(r.m===cutoff)+'"><td>'+months[r.m]+'</td><td>'+fmt(v.s)+'</td><td>'+fmt(v.q)+'</td><td>'+(v.cpa===null?'—':fmt(v.cpa))+'</td><td>'+fmt(v.b)+'</td><td>'+(v.rate===null?'—':pct(v.rate))+'</td><td class="'+(v.status==='已確認'?'sms-status-good':'sms-status-warn')+'">'+v.status+'</td></tr>';}).reverse().join('');
+  }
+  function updateBudget() {
+    const type=$('#sms-budget-type').value,cutoff=Number($('#sms-budget-month').value);
+    const selected=budgetRows.filter(r=>r.m<=cutoff);
+    const annualValues=budgetRows.map(r=>budgetAggregate(r,type)).filter(v=>v.configured);
+    const selectedValues=selected.map(r=>budgetAggregate(r,type)).filter(v=>v.configured);
+    const annual=sumComplete(annualValues.map(v=>v.b)),actual=sumKnown(selectedValues.map(v=>v.a)),remaining=annual===null||actual===null?null:annual-actual;
+    $('#sms-budget-total').innerHTML=unit(annual,'元');
+    $('#sms-budget-actual').innerHTML=unit(actual,'元');
+    $('#sms-budget-remaining').innerHTML=remaining===null?'待補':remaining>=0?unit(remaining,'元'):'超支 '+unit(-remaining,'元');
+    $('#sms-budget-rate').textContent=annual&&actual!==null?pct(actual/annual):'—';
+    const partial=selectedValues.some(v=>v.partial);
+    $('#sms-budget-period').textContent='2025/12－'+months[cutoff]+(partial?'｜含部分資料，未全數確認':'');
+    const periodBudget=sumComplete(selectedValues.map(v=>v.b));
+    $('#sms-budget-callout').textContent='截至 '+months[cutoff]+' 的排定預算為 '+fmt(periodBudget)+' 元；已取得花費占期間預算 '+(periodBudget&&actual!==null?pct(actual/periodBudget):'無法計算')+'。'+(partial?'尚有部分或未補花費，執行率與剩餘預算皆非最終結果。':'');
+    const max=Math.max(...budgetRows.flatMap(r=>{const v=budgetAggregate(r,type);return [v.b,r.m<=cutoff?(v.a||0):0];}),1);
+    $('#sms-budget-bars').innerHTML=budgetRows.map(r=>{const v=budgetAggregate(r,type),a=r.m<=cutoff?v.a:null;return '<div class="sms-bar-row"><span>'+months[r.m].slice(5)+'</span><div><div class="sms-bar-track"><div class="sms-bar" style="width:'+(v.b/max*100)+'%;min-width:0"></div></div><div class="sms-bar-track" style="margin-top:4px"><div class="sms-bar sage" style="width:'+((a||0)/max*100)+'%;min-width:0"></div></div></div><span class="sms-bar-value">'+(r.m>cutoff?'未納入':fmt(a))+'</span></div>';}).join('');
+    $('#sms-budget-table').innerHTML=budgetRows.map(r=>{const v=budgetAggregate(r,type),a=r.m<=cutoff?v.a:null,rate=a===null||!v.b?null:a/v.b,diff=a===null||v.b===null?null:v.b-a;return '<tr data-current="'+(r.m===cutoff)+'"><td>'+months[r.m]+'</td><td>'+(v.configured?fmt(v.b):'—')+'</td><td>'+(a===null?'—':fmt(a))+'</td><td>'+(rate===null?'—':pct(rate))+'</td><td class="'+(diff!==null&&diff<0?'sms-status-warn':'')+'">'+(diff===null?'—':diff>=0?'剩餘 '+fmt(diff):'超支 '+fmt(-diff))+'</td><td>'+(!v.configured?'未規劃':r.m>cutoff?'未納入':a===null?'待補':v.partial?'部分資料':'已填')+'</td></tr>';}).join('');
+  }
+  root.querySelectorAll('.sms-tab[data-view]').forEach(button=>button.addEventListener('click',()=>{
+    root.querySelectorAll('.sms-tab[data-view]').forEach(b=>b.setAttribute('aria-selected',String(b===button)));
+    root.querySelectorAll('.sms-view').forEach(panel=>panel.hidden=panel.dataset.panel!==button.dataset.view);
+  }));
+  ['#sms-new-mode','#sms-new-store','#sms-new-month'].forEach(s=>$(s).addEventListener('change',updateNew));
+  ['#sms-consumption-mode','#sms-consumption-store','#sms-consumption-month','#sms-consumption-cohort'].forEach(s=>$(s).addEventListener('change',updateConsumption));
+  ['#sms-meta-store','#sms-meta-month'].forEach(s=>$(s).addEventListener('change',updateMeta));
+  ['#sms-budget-type','#sms-budget-month'].forEach(s=>$(s).addEventListener('change',updateBudget));
+  initializePrivateDashboard();
+})();
+
+
+</script>
+</div>
+
+<dialog id="pm-dialog" aria-label="澤之湯登錄費用"><div class="pm-dialog-bar"><span>澤之湯 · 登錄費用</span><button id="pm-close" type="button" aria-label="關閉填寫視窗">×</button></div><iframe id="pm-frame" title="澤之湯費用填寫表單" data-src="https://script.google.com/macros/s/AKfycbxagwmZc9WPcQ9Qsl9i3bpEXJZ4NIrHk-rx6GIRs34fk2tVW9NWjnPRbW4YIhwJRwYo/exec" referrerpolicy="strict-origin-when-cross-origin"></iframe><p class="pm-fallback">表單未顯示？請關閉後重新開啟；若仍無法載入，請使用僅登入一個 Google 帳號的瀏覽器。</p></dialog><script>(() => {
+  'use strict';
+  const dialog=document.getElementById('pm-dialog'),opener=document.getElementById('pm-open'),frame=document.getElementById('pm-frame');
+  let previousOverflow='';
+  opener.addEventListener('click',()=>{
+    if(!frame.src){
+      const url=new URL(frame.dataset.src);
+      frame.dataset.channel=crypto.randomUUID();
+      url.searchParams.set('channel',frame.dataset.channel);
+      frame.src=url.href;
+    }
+    previousOverflow=document.body.style.overflow;
+    dialog.showModal();document.body.style.overflow='hidden';
+  });
+  document.getElementById('pm-close').addEventListener('click',()=>dialog.close());
+  dialog.addEventListener('close',()=>{document.body.style.overflow=previousOverflow;opener.focus();});
+  // Destroy the embedded session when the dashboard signs out.
+  function clearSession(){dialog.close();frame.removeAttribute('src');delete frame.dataset.channel;}
+  document.getElementById('sms-signout').addEventListener('click',clearSession);
+  window.addEventListener('ss:expense-signout',clearSession);
+})();
+</script></body>
+</html>
+
+
