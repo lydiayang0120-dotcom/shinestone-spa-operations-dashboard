@@ -7,6 +7,8 @@
 #pm-close{font-size:25px;border:0;border-radius:6px;width:40px;height:40px;background:transparent;color:#287d77;cursor:pointer}
 #pm-close:hover{background:#d8eeeb}#pm-close:focus-visible{outline:2px solid #287d77}
 #pm-frame{width:100%;border:0;flex:1;min-height:0;background:#fbffff}
+#pm-loading{position:absolute;inset:49px 0 50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:28px;background:#fbffff;text-align:center;font:14px/1.8 "Microsoft JhengHei",sans-serif}
+#pm-loading[hidden],#pm-loading button[hidden]{display:none}#pm-loading button{border:0;border-radius:6px;background:#244b49;color:white;padding:12px 20px;min-height:44px;cursor:pointer;font:inherit}
 .pm-fallback{margin:0;padding:8px 16px;border-top:1px solid #d8eeeb;font-size:12px;color:#52716f}.pm-fallback a{color:#287d77}
 .preview-banner{padding:10px;background:#fbffff;color:#287d77;font-size:12px}
 @media(max-width:600px){#pm-dialog{width:calc(100vw - 12px);height:calc(100dvh - 12px);max-height:calc(100dvh - 12px)}#sms-dashboard-web .sms-header .sms-controls{flex-wrap:wrap}}
