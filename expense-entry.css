@@ -1,0 +1,13 @@
+#sms-dashboard-web #pm-open{border:1px solid #4fa9a0;background:#fbffff;color:#287d77;white-space:nowrap}
+#sms-dashboard-web #pm-open:hover{background:#d8eeeb}
+#pm-dialog{border:1px solid #b9d9d5;border-radius:14px;padding:0;width:min(600px,calc(100vw - 24px));height:min(820px,calc(100dvh - 24px));max-width:none;max-height:calc(100dvh - 24px);overflow:hidden;background:#fbffff;color:#244b49;box-shadow:0 24px 80px #35291840}
+#pm-dialog::backdrop{background:#302a2359;backdrop-filter:blur(3px)}
+#pm-dialog[open]{display:flex;flex-direction:column}
+.pm-dialog-bar{height:48px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 20px;border-bottom:1px solid #d8eeeb;font:13px "Microsoft JhengHei",sans-serif;color:#287d77}
+#pm-close{font-size:25px;border:0;border-radius:6px;width:40px;height:40px;background:transparent;color:#287d77;cursor:pointer}
+#pm-close:hover{background:#d8eeeb}#pm-close:focus-visible{outline:2px solid #287d77}
+#pm-frame{width:100%;border:0;flex:1;min-height:0;background:#fbffff}
+.pm-fallback{margin:0;padding:8px 16px;border-top:1px solid #d8eeeb;font-size:12px;color:#52716f}.pm-fallback a{color:#287d77}
+.preview-banner{padding:10px;background:#fbffff;color:#287d77;font-size:12px}
+@media(max-width:600px){#pm-dialog{width:calc(100vw - 12px);height:calc(100dvh - 12px);max-height:calc(100dvh - 12px)}#sms-dashboard-web .sms-header .sms-controls{flex-wrap:wrap}}
+
