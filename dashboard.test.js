@@ -26,6 +26,42 @@ function fixtures() {
 }
 const rangeNames=['月度KPI!A1:Y200','Meta月度KPI!A1:T200','年度預算!A1:R100','月報總覽!A1:P40','分店消費!A1:R1000'];
 const ranges=(raw,names=rangeNames)=>raw.map((rows,index)=>({range:names[index],values:table(rows)}));
+
+test('confirmed expenses stay complete when message metrics are unavailable',()=>{
+  const raw=fixtures();
+  raw[1].forEach(row=>{row['訊息花費']=null;row['Meta詢問數']=null;});
+  const parsed=data.parseAll(ranges(raw));
+  assert.equal(data.metaTotal(parsed.metaRows,'all').status,'部分資料');
+  assert.equal(data.metaTotal(parsed.metaRows,'all').cpa,null);
+  assert.equal(data.budgetAggregate(parsed.budgetRows[0],'meta').partial,false);
+  assert.equal(data.budgetAggregate(parsed.budgetRows[0],'all').partial,false);
+  assert.equal(parsed.metaRows[0][data.storeCodes[0]].ms,null);
+});
+
+test('budget source still reports missing and partial expenses honestly',()=>{
+  const raw=fixtures();
+  raw[2][0]['實際花費來源']='部分花費待補';
+  let parsed=data.parseAll(ranges(raw));
+  assert.equal(data.budgetAggregate(parsed.budgetRows[0],'meta').partial,true);
+  raw[2][0]['實際花費']=null;
+  raw[2][0]['填寫狀態']='待補';
+  parsed=data.parseAll(ranges(raw));
+  assert.equal(data.budgetAggregate(parsed.budgetRows[0],'meta').a,null);
+  assert.equal(data.budgetAggregate(parsed.budgetRows[0],'meta').partial,true);
+});
+
+test('unlisted store remains blank while independently confirmed budget stays complete',()=>{
+  const raw=fixtures(), source=raw[1][0], amount=source['實際花費'];
+  source['實際花費']=null;source['訊息花費']=null;source['Meta詢問數']=null;
+  source['資料完整性']='來源未獨立列示';
+  source['查詢備註']='已併入其他來源，不重複計入，未將缺列補0';
+  raw[2][0]['實際花費']-=amount;
+  const parsed=data.parseAll(ranges(raw));
+  assert.equal(parsed.metaRows[0][data.storeCodes[0]].s,null);
+  assert.equal(data.metaTotal([parsed.metaRows[0]],'all').partial,true);
+  assert.equal(data.budgetAggregate(parsed.budgetRows[0],'meta').partial,false);
+});
+
 test('fiscal year, confirmed months and message-cost CPA',()=>{
   const r=data.parseAll(ranges(fixtures()));
   assert.equal(r.newRows.length,2);

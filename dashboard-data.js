@@ -225,7 +225,7 @@
     for (const row of metaRows) {
       const meta = metaTotal([row], 'all'), budget = budgetRows.find(item => item.m === row.m).meta;
       if (meta.s !== null && budget.a !== null && Math.abs(meta.s - budget.a) > 0.01) throw new Error(`Meta 與年度預算的 ${months[row.m]} 花費不一致，請同步來源。`);
-      if (meta.partial && budget.a !== null) budget.partial = true;
+      // Budget completeness follows its expense source, not missing message-cost metrics.
     }
     const consumptionRows = parseConsumptionRows(ranges[3]?.values, ranges[4]?.values);
     if(newRows.length!==consumptionRows.length) throw new Error('新客與消費月份不一致。');
@@ -240,4 +240,5 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else host.SMSData = Object.freeze(api);
 })(typeof window !== 'undefined' ? window : globalThis);
+
 
